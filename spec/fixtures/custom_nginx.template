@@ -710,7 +710,6 @@ http {
 
     include '*.http_mock';
 
-> if not legacy_worker_events then
     server {
         charset UTF-8;
         server_name kong_worker_events;
@@ -722,7 +721,6 @@ http {
             }
         }
     }
-> end -- not legacy_worker_events
 }
 > end
 
@@ -962,7 +960,6 @@ server {
         }
     }
 
-> if not legacy_worker_events then
     server {
         listen unix:${{PREFIX}}/stream_worker_events.sock;
         access_log off;
@@ -970,7 +967,6 @@ server {
           require("resty.events.compat").run()
         }
     }
-> end -- not legacy_worker_events
 
 > if cluster_ssl_tunnel then
     server {

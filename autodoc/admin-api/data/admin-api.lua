@@ -710,6 +710,9 @@ return {
           description = [[
             Change the log level of a node.
 
+            You can set the timeout in seconds with querystring parameter `timeout`,
+            the default is 600 seconds.
+
             See http://nginx.org/en/docs/ngx_core_module.html#error_log for a
             list of accepted values.
 
@@ -747,6 +750,9 @@ return {
           endpoint = [[<div class="endpoint put indent">/debug/cluster/log-level/{log_level}</div>]],
           description = [[
             Change the log level of all nodes in a cluster.
+
+            You can set the timeout in seconds with querystring parameter `timeout`,
+            the default is 600 seconds.
 
             See http://nginx.org/en/docs/ngx_core_module.html#error_log for a
             list of accepted values.
@@ -793,6 +799,9 @@ return {
           description = [[
             Change the log level of all Control Plane nodes deployed in Hybrid
             (CP/DP) cluster.
+
+            You can set the timeout in seconds with querystring parameter `timeout`,
+            the default is 600 seconds.
 
             See http://nginx.org/en/docs/ngx_core_module.html#error_log for a
             list of accepted values.

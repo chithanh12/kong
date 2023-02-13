@@ -44,6 +44,8 @@
   Thanks [@PidgeyBE](https://github.com/PidgeyBE) for contributing this change.
   [#10595](https://github.com/Kong/kong/pull/10595)
   [#10204](https://github.com/Kong/kong/pull/10204)
+- Support timeout for dynamic log level
+  [#10288](https://github.com/Kong/kong/pull/10288)
 
 #### Admin API
 

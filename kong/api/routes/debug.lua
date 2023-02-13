@@ -1,16 +1,20 @@
-local get_sys_filter_level = require("ngx.errlog").get_sys_filter_level
-local set_log_level = require("resty.kong.log").set_log_level
+local set_log_level               = require("resty.kong.log").set_log_level
+local cjson                       = require("cjson.safe")
 
-local LOG_LEVELS = require("kong.constants").LOG_LEVELS
+local LOG_LEVELS                  = require("kong.constants").LOG_LEVELS
 
-local ngx = ngx
-local kong = kong
-local pcall = pcall
-local type = type
-local tostring = tostring
+local ngx                         = ngx
+local kong                        = kong
+local pcall                       = pcall
+local type                        = type
+local tostring                    = tostring
 
-local NODE_LEVEL_BROADCAST = false
-local CLUSTER_LEVEL_BROADCAST = true
+local get_log_level               = require("resty.kong.log").get_log_level
+
+local NODE_LEVEL_BROADCAST        = false
+local CLUSTER_LEVEL_BROADCAST     = true
+local DEFAULT_LOG_LEVEL_TIMEOUT   = 60 * 10 -- 10 minutes
+
 
 local function handle_put_log_level(self, broadcast)
   if kong.configuration.database == "off" then
@@ -19,27 +23,33 @@ local function handle_put_log_level(self, broadcast)
   end
 
   local log_level = LOG_LEVELS[self.params.log_level]
+  local timeout = tonumber(self.params.timeout) or DEFAULT_LOG_LEVEL_TIMEOUT
 
   if type(log_level) ~= "number" then
     return kong.response.exit(400, { message = "unknown log level: " .. self.params.log_level })
   end
 
-  local sys_filter_level = get_sys_filter_level()
+  local cur_log_level = get_log_level(LOG_LEVELS[kong.configuration.log_level])
 
-  if sys_filter_level == log_level then
+  if cur_log_level == log_level then
     local message = "log level is already " .. self.params.log_level
     return kong.response.exit(200, { message = message })
   end
 
-  local ok, err = pcall(set_log_level, log_level)
+  local ok, err = pcall(set_log_level, log_level, timeout)
 
   if not ok then
     local message = "failed setting log level: " .. err
     return kong.response.exit(500, { message = message })
   end
 
+  local data = {
+    log_level = log_level,
+    timeout = timeout,
+  }
+
   -- broadcast to all workers in a node
-  ok, err = kong.worker_events.post("debug", "log_level", log_level)
+  ok, err = kong.worker_events.post("debug", "log_level", data)
 
   if not ok then
     local message = "failed broadcasting to workers: " .. err
@@ -48,7 +58,7 @@ local function handle_put_log_level(self, broadcast)
 
   if broadcast then
     -- broadcast to all nodes in a cluster
-    ok, err = kong.cluster_events:broadcast("log_level", tostring(log_level))
+    ok, err = kong.cluster_events:broadcast("log_level", cjson.encode(data))
 
     if not ok then
       local message = "failed broadcasting to cluster: " .. err
@@ -57,28 +67,35 @@ local function handle_put_log_level(self, broadcast)
   end
 
   -- store in shm so that newly spawned workers can update their log levels
-  ok, err = ngx.shared.kong:set("kong:log_level", log_level)
+  ok, err = ngx.shared.kong:set("kong:log_level", log_level, timeout)
 
   if not ok then
     local message = "failed storing log level in shm: " .. err
     return kong.response.exit(500, { message = message })
   end
 
+  ok, err = ngx.shared.kong:set("kong:log_level_timeout_at", ngx.time() + timeout, timeout)
+
+  if not ok then
+    local message = "failed storing the timeout of log level in shm: " .. err
+    return kong.response.exit(500, { message = message })
+  end
+
   return kong.response.exit(200, { message = "log level changed" })
 end
+
 
 local routes = {
   ["/debug/node/log-level"] = {
     GET = function(self)
-      local sys_filter_level = get_sys_filter_level()
-      local cur_level = LOG_LEVELS[sys_filter_level]
+      local cur_level = get_log_level(LOG_LEVELS[kong.configuration.log_level])
 
-      if type(cur_level) ~= "string" then
-        local message = "unknown log level: " .. tostring(sys_filter_level)
+      if type(LOG_LEVELS[cur_level]) ~= "string" then
+        local message = "unknown log level: " .. tostring(cur_level)
         return kong.response.exit(500, { message = message })
       end
 
-      return kong.response.exit(200, { message = "log level: " .. cur_level })
+      return kong.response.exit(200, { message = "log level: " .. LOG_LEVELS[cur_level] })
     end,
   },
   ["/debug/node/log-level/:log_level"] = {
@@ -87,6 +104,7 @@ local routes = {
     end
   },
 }
+
 
 local cluster_name
 

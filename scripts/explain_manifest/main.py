@@ -86,7 +86,7 @@ def gather_files(path):
             code = os.system(
                 "ar p %s data.tar.gz | tar -C %s -xz" % (path, t.name))
         elif ext == ".rpm":
-            # GNU gpio and rpm2cpio is needed
+            # GNU cpio and rpm2cpio is needed
             code = os.system(
                 "rpm2cpio %s | cpio --no-preserve-owner --no-absolute-filenames -idm -D %s" % (path, t.name))
         elif ext == ".gz":
@@ -193,8 +193,8 @@ class NginxInfo(ElfFileInfo):
     def __init__(self, path, relpath):
         super().__init__(path, relpath)
 
-        self.modules = []
-        self.linked_openssl = None
+        self.nginx_modules = []
+        self.nginx_compiled_openssl = None
 
         binary = lief.parse(path)
 
@@ -206,12 +206,12 @@ class NginxInfo(ElfFileInfo):
                     pdir = os.path.basename(os.path.dirname(m))
                     mname = os.path.basename(m)
                     if pdir in ("external", "distribution"):
-                        self.modules.append(mname)
+                        self.nginx_modules.append(mname)
                     else:
-                        self.modules.append(os.path.join(pdir, mname))
-                self.modules = sorted(self.modules)
+                        self.nginx_modules.append(os.path.join(pdir, mname))
+                self.nginx_modules = sorted(self.nginx_modules)
             elif m := re.match("^built with (.+) \(running with", s):
-                self.linked_openssl = m.group(1).strip()
+                self.nginx_compiled_openssl = m.group(1).strip()
 
         # Fetch DWARF infos
         with open(path, "rb") as f:
@@ -232,10 +232,10 @@ class NginxInfo(ElfFileInfo):
         pline = super().explain(opts)
 
         lines = []
-        lines.append(("Modules", self.modules))
-        lines.append(("OpenSSL", self.linked_openssl))
-        lines.append(("DWARF", self.has_dwarf_info))
-        lines.append(("DWARF - ngx_http_request_t related DWARF DIEs", self.has_ngx_http_request_t_DW))
+        lines.append(("Nginx Modules", self.nginx_modules))
+        lines.append(("Nginx OpenSSL", self.nginx_compiled_openssl))
+        lines.append(("Nginx DWARF", self.has_dwarf_info))
+        lines.append(("Nginx DWARF - ngx_http_request_t related DWARF DIEs", self.has_ngx_http_request_t_DW))
 
         return pline + lines
 
@@ -298,6 +298,47 @@ def write_manifest(title, results, opts: ExplainOpts, output):
         f.close()
 
 
+class ExpectChain():
+    def __init__(self, infos):
+        self._infos = infos
+        self._logical_reverse = False
+        self._files = []
+    
+    def Expect(self, path_glob):
+        for f in self._infos:
+            if glob_match(f.path, path_glob):
+                self._files.append(f)
+        return self
+
+    def Not(self):
+        self._logical_reverse = True
+        return self
+
+    def Equals(self, attr, value):
+        print(attr, value)
+        return self
+
+    def Likes(self, attr, value):
+        return self
+
+    def Contains(self, attr, value):
+        return self
+
+    def ContainsLike(self, attr, value):
+        return self 
+    
+    def __getattr__(self, name):
+        m = re.findall(r"([A-Z][a-z]+)(Equals|Likes|Contains|ContainsLike)", name)
+        if not m:
+            raise AttributeError("Unknown attribute %s" % name)
+        op, attr = m[0]
+        attr = attr.lower()
+        for f in self._files:
+            if not hasattr(f, attr):
+                raise AttributeError("\"%s\" expect \"%s\" attribute to be present, but it's not for %s" % (name, attr, f.path))
+        return self
+
+
 if __name__ == "__main__":
     args = parse_args()
 
@@ -312,4 +353,7 @@ if __name__ == "__main__":
     else:
         title = "contents in directory %s" % args.path
 
-    write_manifest(title, infos, ExplainOpts.from_args(args), args.output)
+    # write_manifest(title, infos, ExplainOpts.from_args(args), args.output)
+
+    E = ExpectChain(infos)
+    E.Expect("*/nginx").RpathEquals("1")

@@ -26,6 +26,7 @@ local env_datadog_agent_port = tonumber(os.getenv 'KONG_DATADOG_AGENT_PORT' or "
 function statsd_mt:new(conf)
   local sock   = udp()
   local host = conf.host or env_datadog_agent_host
+  ngx.log(ngx.ERR, "------ ", host)
   local port = conf.port or env_datadog_agent_port
 
   local _, err = sock:setpeername(host, port)

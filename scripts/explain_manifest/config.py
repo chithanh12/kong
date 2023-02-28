@@ -3,6 +3,8 @@ from globmatch import glob_match
 
 from main import FileInfo
 
+compiler_uses_runpath = True
+
 def transform(f: FileInfo):
     # XXX: libxslt uses libtool and it injects some extra rpaths
     # we only care about the kong library rpath so removing it here
@@ -16,3 +18,11 @@ def transform(f: FileInfo):
         elif f.runpath and "/usr/local/kong/lib" in f.runpath:
             f.runpath = "/usr/local/kong/lib"
         # otherwise remain unmodified
+    
+
+    # if we know compiler produces runpath instead of rpath,
+    # and the file indeed doesn't have rpath but has runpath,
+    # use runpath as rpath so that we can use rpath in tests
+    if compiler_uses_runpath and hasattr(f, "runpath") and f.runpath and not f.rpath:
+        f.rpath = f.runpath
+        f.runpath = None

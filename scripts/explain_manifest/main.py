@@ -326,17 +326,19 @@ def write_color(color):
 class ExpectChain():
     def __init__(self, infos):
         self._infos = infos
+        self._all_failures = []
+        self._reset()
+        atexit.register(self._print_all_fails)
+
+    def _reset(self):
         self._logical_reverse = False
         self._files = []
         self._msg = ""
         self._title_shown = False
         self._checks_count = 0
-        self._all_failures = []
-
-        atexit.register(self._print_all_fails)
 
     def _ctx_info(self):
-        f = inspect.currentframe().f_back.f_back
+        f = inspect.currentframe().f_back.f_back.f_back.f_back
         fn_rel = os.path.relpath(getframeinfo(f).filename, os.getcwd())
 
         return "%s:%d" % (fn_rel, f.f_lineno)
@@ -376,13 +378,14 @@ class ExpectChain():
             (ok, err_template) = fn(v)
             if not ok:
                 self._print_fail("file %s <%s>: %s" % (f.relpath, attr, err_template.format(v)))
-                return self
+                return False
+        return True
 
     def _equal(self, attr, expect):
-        return self._compare(attr, lambda a: (a == expect, "{} doensn't equal to %s" % expect))
+        return self._compare(attr, lambda a: (a == expect, "{} doesn't equal to %s" % expect))
 
     def _match(self, attr, expect):
-        return self._compare(attr, lambda a: (re.match(expect, a), "{} doensn't match %s" % expect))
+        return self._compare(attr, lambda a: (re.match(expect, a), "{} doesn't match %s" % expect))
 
     def _contain(self, attr, expect):
         def fn(a):
@@ -414,8 +417,10 @@ class ExpectChain():
     
     # following are public methods (test functions)
 
-    def expect(self, path_glob):
-        self._title_shown = False # reset
+    def expect(self, path_glob, msg):
+        self._reset()
+        self._msg = msg
+
         for f in self._infos:
             if glob_match(f.relpath, [path_glob]):
                 self._files.append(f)
@@ -423,10 +428,6 @@ class ExpectChain():
 
     def do_not(self):
         self._logical_reverse = True
-        return self
-
-    def describe(self, msg):
-        self._msg = msg
         return self
     
     def __getattr__(self, name):
@@ -469,4 +470,7 @@ if __name__ == "__main__":
     # write_manifest(title, infos, ExplainOpts.from_args(args), args.output)
 
     E = ExpectChain(infos)
-    E.describe("nginx rpath should contain kong lib").expect("**/nginx").runpath_equal("1")
+    E.expect("**/nginx", "nginx rpath should contain kong lib") \
+        .rpath_equal("b")
+    E.expect("**/nginx", "") \
+        .rpath_equal("/usr/local/openresty/luajit/lib:/usr/local/kong/lib")

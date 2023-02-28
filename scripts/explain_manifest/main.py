@@ -5,13 +5,17 @@ import re
 import sys
 import glob
 import atexit
+import difflib
+import inspect
 import argparse
+import datetime
 import tempfile
 from pathlib import Path
 
 import lief
 from elftools.elf.elffile import ELFFile
 from globmatch import glob_match
+from inspect import getframeinfo
 
 import config
 
@@ -297,46 +301,155 @@ def write_manifest(title, results, opts: ExplainOpts, output):
     if f != sys.stdout:
         f.close()
 
+def write_color(color):
+    term_colors = {
+        "red": 31,
+        "green": 32,
+        "yellow": 33,
+        "blue": 34,
+        "magenta": 35,
+        "cyan": 36,
+        "white": 37,
+    }
+    def decorator(fn):
+        def wrapper(self, *args):
+            if color not in term_colors:
+                raise ValueError("unknown color %s" % color)
+            sys.stdout.write('\033[%dm' % term_colors[color])
+            r = fn(self, *args)
+            sys.stdout.write('\033[0m')
+            return r
+        return wrapper
+    return decorator
+
 
 class ExpectChain():
     def __init__(self, infos):
         self._infos = infos
         self._logical_reverse = False
         self._files = []
+        self._msg = ""
+        self._title_shown = False
+        self._checks_count = 0
+        self._all_failures = []
+
+        atexit.register(self._print_all_fails)
+
+    def _ctx_info(self):
+        f = inspect.currentframe().f_back.f_back
+        fn_rel = os.path.relpath(getframeinfo(f).filename, os.getcwd())
+
+        return "%s:%d" % (fn_rel, f.f_lineno)
     
-    def Expect(self, path_glob):
+    def _log(self, *args):
+        sys.stdout.write(" %s " % datetime.datetime.now().strftime('%b %d %X'))
+        print(*args)
+    
+    @write_color("white")
+    def _print_title(self):
+        if self._title_shown:
+            return
+        self._log("[TEST] running %s: %s" % (self._ctx_info(), self._msg))
+        self._title_shown = True
+
+    @write_color("red")
+    def _print_fail(self, msg):
+        self._log("[FAIL] %s" % msg)
+        self._all_failures.append("%s: %s" % (self._ctx_info(), msg))
+
+    @write_color("green")
+    def _print_ok(self):
+        self._log("[OK  ] %d check(s) passed for %d file(s)" % (self._checks_count, len(self._files)))
+    
+    @write_color("red")
+    def _print_all_fails(self):
+        if self._all_failures:
+            print("\nFollowing failure(s) occured:\n" + "\n".join(self._all_failures))
+            os._exit(1)
+
+    def _compare(self, attr, fn):
+        self._checks_count += 1
+        for f in self._files:
+            if not hasattr(f, attr):
+                continue # accept missing attribute for now
+            v = getattr(f, attr)
+            (ok, err_template) = fn(v)
+            if not ok:
+                self._print_fail("file %s <%s>: %s" % (f.relpath, attr, err_template.format(v)))
+                return self
+
+    def _equal(self, attr, expect):
+        return self._compare(attr, lambda a: (a == expect, "{} doensn't equal to %s" % expect))
+
+    def _match(self, attr, expect):
+        return self._compare(attr, lambda a: (re.match(expect, a), "{} doensn't match %s" % expect))
+
+    def _contain(self, attr, expect):
+        def fn(a):
+            if isinstance(a, list):
+                ok = expect in a
+                if not ok:
+                    closed = difflib.get_close_matches(expect, a, 1)
+                    if len(a) == 0:
+                        msg = "%s is empty" % attr
+                    elif len(closed) > 0:
+                        msg = "did you mean '%s'?" % closed[0]
+                    else:
+                        msg = "%s is not found in the list" % expect
+                    return ok, msg
+            else:
+                return False, "%s is not a list" % attr
+            return True, None
+        return self._compare(attr, fn)
+
+    def _contain_match(self, attr, expect):
+        def fn(a):
+            if isinstance(a, list):
+                for e in a:
+                    if re.match(expect, e):
+                        return True, None
+            else:
+                return False, "%s is not a list" % attr
+        return self._compare(attr, fn)
+    
+    # following are public methods (test functions)
+
+    def expect(self, path_glob):
+        self._title_shown = False # reset
         for f in self._infos:
-            if glob_match(f.path, path_glob):
+            if glob_match(f.relpath, [path_glob]):
                 self._files.append(f)
         return self
 
-    def Not(self):
+    def do_not(self):
         self._logical_reverse = True
         return self
 
-    def Equals(self, attr, value):
-        print(attr, value)
+    def describe(self, msg):
+        self._msg = msg
         return self
-
-    def Likes(self, attr, value):
-        return self
-
-    def Contains(self, attr, value):
-        return self
-
-    def ContainsLike(self, attr, value):
-        return self 
     
     def __getattr__(self, name):
-        m = re.findall(r"([A-Z][a-z]+)(Equals|Likes|Contains|ContainsLike)", name)
+        self._print_title()
+
+        m = re.findall(r"([a-z]+)(_equal|_match|_contain|_contain_match)", name)
         if not m:
-            raise AttributeError("Unknown attribute %s" % name)
-        op, attr = m[0]
-        attr = attr.lower()
+            self._print_fail("unknown test function \"%s\"" % name)
+            return lambda *x: self
+
+        attr, op = m[0]
         for f in self._files:
             if not hasattr(f, attr):
-                raise AttributeError("\"%s\" expect \"%s\" attribute to be present, but it's not for %s" % (name, attr, f.path))
-        return self
+                self._print_fail("\"%s\" expect \"%s\" attribute to be present, but it's not for %s" % (name, attr, f.path))
+                return lambda *x: self
+
+        def cls(expect):
+            result = getattr(self, op)(attr, expect)
+            if result != self._logical_reverse:
+                self._print_ok()
+            return self
+
+        return cls
 
 
 if __name__ == "__main__":
@@ -356,4 +469,4 @@ if __name__ == "__main__":
     # write_manifest(title, infos, ExplainOpts.from_args(args), args.output)
 
     E = ExpectChain(infos)
-    E.Expect("*/nginx").RpathEquals("1")
+    E.describe("nginx rpath should contain kong lib").expect("**/nginx").runpath_equal("1")

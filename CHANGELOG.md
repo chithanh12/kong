@@ -101,6 +101,8 @@
 - Fix an issue where sorting function for traditional router sources/destinations lead to "invalid order
   function for sorting" error.
   [#10514](https://github.com/Kong/kong/pull/10514)
+- Fix an issue where slow start up of Go plugin server causes dead lock.
+  [#10561](https://github.com/Kong/kong/pull/10561)
 
 #### Admin API
 

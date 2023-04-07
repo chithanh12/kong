@@ -114,7 +114,9 @@
 - **Request Transformer**: honor value of untrusted_lua configuration parameter
   [#10327](https://github.com/Kong/kong/pull/10327)
 - **OAuth2**: fix an issue that OAuth2 token was being cached to nil while access to the wrong service first.
-  [#10522](https://github.com/Kong/kong/pull/10522)  
+  [#10522](https://github.com/Kong/kong/pull/10522)
+- **Oauth2**: prevent an authorization code created by one plugin instance to be exchanged for an access token by a different plugin instance.
+  [#10011](https://github.com/Kong/kong/pull/10011)
 
 #### PDK
 

@@ -71,6 +71,18 @@
 
 ### Breaking Changes
 
+#### Core
+
+- The `traditional_compat` router mode has been made more compatible with the
+  behavior of `traditional` mode by splitting routes with multiple paths into
+  multiple atc routes with separate priorities.  Since the introduction of the new
+  router in Kong Gateway 3.0, `traditional_compat` mode assigned only one priority
+  to each route, even if different prefix path lengths and regular expressions
+  were mixed in a route. This was not how multiple paths were handled in the
+  `traditional` router and the behavior has now been changed so that a separate
+  priority value is assigned to each path in a route.
+  [#10615](https://github.com/Kong/kong/pull/10615)
+
 #### Plugins
 
 - **Serverless Functions**: `kong.cache` now points to a cache instance that is dedicated to the
@@ -105,9 +117,6 @@
   Thanks [@PidgeyBE](https://github.com/PidgeyBE) for contributing this change.
   [#10595](https://github.com/Kong/kong/pull/10595)
   [#10204](https://github.com/Kong/kong/pull/10204)
-- Make `traditional_compat` mode more compatible to `traditional` by splitting routes with
-  multiple paths into multiple atc routes with separate priorities.
-  [#10615](https://github.com/Kong/kong/pull/10615)
 
 #### Admin API
 
@@ -178,7 +187,7 @@
 - **Request Transformer**: honor value of untrusted_lua configuration parameter
   [#10327](https://github.com/Kong/kong/pull/10327)
 - **OAuth2**: fix an issue that OAuth2 token was being cached to nil while access to the wrong service first.
-  [#10522](https://github.com/Kong/kong/pull/10522)  
+  [#10522](https://github.com/Kong/kong/pull/10522)
 
 #### PDK
 

@@ -2191,13 +2191,13 @@ for _, flavor in ipairs({ "traditional", "traditional_compatible", "expressions"
                 },
               },
             },
-            -- percent encoding with unreserved char, route should be plain text
+            -- percent encoding with unreserved char, route should not be normalized
             {
               service = service,
               route   = {
                 id = "e8fb37f1-102d-461e-9c51-6608a6bb8101",
                 paths = {
-                  "/plain/a.b%25c", -- /plain/a.b.c
+                  "/plain/a.b%58c", -- /plain/a.bXc
                 },
               },
             },
@@ -2239,9 +2239,9 @@ for _, flavor in ipairs({ "traditional", "traditional_compatible", "expressions"
           assert.same(use_case[1].route, match_t.route)
 
           -- route no longer normalize user configured path
-          match_t = router:select("GET", "/plain/a.b c", "example.com")
+          match_t = router:select("GET", "/plain/a.bXc", "example.com")
           assert.falsy(match_t)
-          match_t = router:select("GET", "/plain/a.b%25c", "example.com")
+          match_t = router:select("GET", "/plain/a.b%58c", "example.com")
           assert.truthy(match_t)
           assert.same(use_case[2].route, match_t.route)
 

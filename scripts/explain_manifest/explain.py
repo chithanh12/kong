@@ -165,22 +165,20 @@ class NginxInfo(ElfFileInfo):
                 self.nginx_compiled_openssl = m.group(1).strip()
 
         # Fetch DWARF infos
-        self.has_dwarf_info = True
-        self.has_ngx_http_request_t_DW = True
-        # with open(path, "rb") as f:
-        #     elffile = ELFFile(f)
-        #     self.has_dwarf_info = elffile.has_dwarf_info()
-        #     self.has_ngx_http_request_t_DW = False
-        #     dwarf_info = elffile.get_dwarf_info()
-        #     for cu in dwarf_info.iter_CUs():
-        #         dies = [die for die in cu.iter_DIEs()]
-        #         # Too many DIEs in the binary, we just check those in `ngx_http_request`
-        #         if "ngx_http_request" in dies[0].attributes['DW_AT_name'].value.decode('utf-8'):
-        #             for die in dies:
-        #                 value = die.attributes.get('DW_AT_name') and die.attributes.get('DW_AT_name').value.decode('utf-8')
-        #                 if value and value == "ngx_http_request_t":
-        #                     self.has_ngx_http_request_t_DW = True
-        #                     return
+        with open(path, "rb") as f:
+            elffile = ELFFile(f)
+            self.has_dwarf_info = elffile.has_dwarf_info()
+            self.has_ngx_http_request_t_DW = False
+            dwarf_info = elffile.get_dwarf_info()
+            for cu in dwarf_info.iter_CUs():
+                dies = [die for die in cu.iter_DIEs()]
+                # Too many DIEs in the binary, we just check those in `ngx_http_request`
+                if "ngx_http_request" in dies[0].attributes['DW_AT_name'].value.decode('utf-8'):
+                    for die in dies:
+                        value = die.attributes.get('DW_AT_name') and die.attributes.get('DW_AT_name').value.decode('utf-8')
+                        if value and value == "ngx_http_request_t":
+                            self.has_ngx_http_request_t_DW = True
+                            return
 
     def explain(self, opts):
         pline = super().explain(opts)

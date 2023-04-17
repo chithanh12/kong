@@ -291,10 +291,11 @@ class ExpectChain():
                 if diff_result.stderr:
                     print(diff_result.stderr.decode())
 
-        suites.common_suites(self)
+        suites.common_suites(self.expect)
+        suites.libc_libcpp_suites(self.expect, suite.libc_max_version, suite.libstdcpp_max_version)
 
         if suite.extra_tests:
             for s in suites.extra_tests:
-                s(self)
+                s(self.expect)
 
         self._log("[TEST] finished test suite %s" % suite.name)

@@ -21,6 +21,8 @@ def transform(f: FileInfo):
         # otherwise remain unmodified
 
 
+# https://repology.org/project/glibc/versions
+# TODO: libstdc++ verions
 targets = {
     "alpine-amd64": ExpectSuite(
         name="Alpine Linux (amd64)",
@@ -31,27 +33,33 @@ targets = {
         name="Amazon Linux 2 (amd64)",
         manifest="fixtures/amazonlinux2-amd64.txt",
         use_rpath=True,
+        libc_max_version="2.26",
     ),
     "el7-amd64": ExpectSuite(
         name="Redhat 7 (amd64)",
         manifest="fixtures/el7-amd64.txt",
         use_rpath=True,
+        libc_max_version="2.17",
     ),
     "ubuntu-18.04-amd64": ExpectSuite(
         name="Ubuntu 18.04 (amd64)",
         manifest="fixtures/ubuntu-18.04-amd64.txt",
+        libc_max_version="2.27",
     ),
     "ubuntu-20.04-amd64": ExpectSuite(
         name="Ubuntu 20.04 (amd64)",
         manifest="fixtures/ubuntu-20.04-amd64.txt",
+        libc_max_version="2.30",
     ),
     "ubuntu-22.04-amd64": ExpectSuite(
         name="Ubuntu 22.04 (amd64)",
         manifest="fixtures/ubuntu-22.04-amd64.txt",
+        libc_max_version="2.35",
     ),
     "ubuntu-22.04-arm64": ExpectSuite(
         name="Ubuntu 22.04 (arm64)",
         manifest="fixtures/ubuntu-22.04-arm64.txt",
+        libc_max_version="2.35",
         extra_tests=[arm64_suites],
     ),
 }

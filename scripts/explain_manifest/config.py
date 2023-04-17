@@ -2,8 +2,9 @@
 from globmatch import glob_match
 
 from main import FileInfo
+from expect import ExpectSuite
+from suites import arm64_suites
 
-compiler_uses_runpath = True
 
 def transform(f: FileInfo):
     # XXX: libxslt uses libtool and it injects some extra rpaths
@@ -18,11 +19,39 @@ def transform(f: FileInfo):
         elif f.runpath and "/usr/local/kong/lib" in f.runpath:
             f.runpath = "/usr/local/kong/lib"
         # otherwise remain unmodified
-    
 
-    # if we know compiler produces runpath instead of rpath,
-    # and the file indeed doesn't have rpath but has runpath,
-    # use runpath as rpath so that we can use rpath in tests
-    if compiler_uses_runpath and hasattr(f, "runpath") and f.runpath and not f.rpath:
-        f.rpath = f.runpath
-        f.runpath = None
+
+targets = {
+    "alpine-amd64": ExpectSuite(
+        name="Alpine Linux (amd64)",
+        manifest="fixtures/alpine-amd64.txt",
+        use_rpath=True,
+    ),
+    "amazonlinux2-amd64": ExpectSuite(
+        name="Amazon Linux 2 (amd64)",
+        manifest="fixtures/amazonlinux2-amd64.txt",
+        use_rpath=True,
+    ),
+    "el7-amd64": ExpectSuite(
+        name="Redhat 7 (amd64)",
+        manifest="fixtures/el7-amd64.txt",
+        use_rpath=True,
+    ),
+    "ubuntu-18.04-amd64": ExpectSuite(
+        name="Ubuntu 18.04 (amd64)",
+        manifest="fixtures/ubuntu-18.04-amd64.txt",
+    ),
+    "ubuntu-20.04-amd64": ExpectSuite(
+        name="Ubuntu 20.04 (amd64)",
+        manifest="fixtures/ubuntu-20.04-amd64.txt",
+    ),
+    "ubuntu-22.04-amd64": ExpectSuite(
+        name="Ubuntu 22.04 (amd64)",
+        manifest="fixtures/ubuntu-22.04-amd64.txt",
+    ),
+    "ubuntu-22.04-arm64": ExpectSuite(
+        name="Ubuntu 22.04 (arm64)",
+        manifest="fixtures/ubuntu-22.04-arm64.txt",
+        extra_tests=[arm64_suites],
+    ),
+}

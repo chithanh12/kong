@@ -107,6 +107,8 @@
 - Fix an issue where sorting function for traditional router sources/destinations lead to "invalid order
   function for sorting" error.
   [#10514](https://github.com/Kong/kong/pull/10514)
+- Fix the UDP socket leak caused by frequent DNS queries.
+  [#10691](https://github.com/Kong/kong/pull/10691)
 
 #### Admin API
 

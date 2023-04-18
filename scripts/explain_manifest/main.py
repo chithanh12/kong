@@ -7,16 +7,14 @@ import atexit
 import difflib
 import argparse
 import tempfile
-from io import StringIO 
+from io import StringIO
 from typing import List
 from pathlib import Path
-
-from globmatch import glob_match
 
 import config
 
 from explain import ExplainOpts, FileInfo, ElfFileInfo, NginxInfo
-from expect import ExpectChain
+from expect import ExpectChain, glob_match_ignore_slash
 
 
 def parse_args():
@@ -28,8 +26,8 @@ def parse_args():
     parser.add_argument(
         "--suite", "-s", help="Expect suite name to test, defined in config.py")
     parser.add_argument(
-        "--file_list", "-f", help="Path to the files list to explain for manifest; " + \
-                                    "each line in the file should be a glob pattern of full path")
+        "--file_list", "-f", help="Path to the files list to explain for manifest; " +
+        "each line in the file should be a glob pattern of full path")
     parser.add_argument(
         "--owners", help="Export and compare owner and group", action="store_true")
     parser.add_argument(
@@ -48,12 +46,14 @@ def parse_args():
 
     return parser.parse_args()
 
+
 def read_glob(path: str):
     if not path:
         return ["**"]
 
     with open(path, "r") as f:
         return f.read().splitlines()
+
 
 def gather_files(path: str):
     ext = os.path.splitext(path)[1]
@@ -79,6 +79,7 @@ def gather_files(path: str):
         raise Exception("Don't know how to process \"%s\"" % path)
 
     return path
+
 
 def walk_files(path: str):
     results = []
@@ -108,7 +109,7 @@ def write_manifest(title: str, results: List[FileInfo], globs: List[str], opts: 
     f = StringIO()
 
     for result in results:
-        if not glob_match(result.path, globs):
+        if not glob_match_ignore_slash(result.path, globs):
             continue
 
         entries = result.explain(opts)
@@ -131,11 +132,16 @@ def write_manifest(title: str, results: List[FileInfo], globs: List[str], opts: 
 
     return f.getvalue().encode('utf-8')
 
+
 if __name__ == "__main__":
     args = parse_args()
 
     if not args.suite and not args.output:
         raise Exception("At least one of --suite or --output is required")
+
+    if args.suite and Path(args.path).is_dir():
+        raise Exception(
+            "suite mode only works with archive files (deb, rpm, apk.tar.gz, etc.")
 
     directory = gather_files(args.path)
 
@@ -152,13 +158,15 @@ if __name__ == "__main__":
 
     if args.suite:
         if args.suite not in config.targets:
-            closest = difflib.get_close_matches(config.targets.keys(), args.suite, 1)
+            closest = difflib.get_close_matches(
+                config.targets.keys(), args.suite, 1)
             maybe = ""
             if closest:
                 maybe = ", maybe you meant %s" % closest[0]
             raise Exception("Unknown suite %s%s" % (args.suite, maybe))
         E = ExpectChain(infos)
-        E.run(config.targets[args.suite], manifest)
+        E.compare_manifest(config.targets[args.suite], manifest)
+        E.run(config.targets[args.suite])
 
     if args.output:
         if args.output == "-":
@@ -168,4 +176,3 @@ if __name__ == "__main__":
         f.write(manifest)
         if args.output != "-":
             f.close()
-    

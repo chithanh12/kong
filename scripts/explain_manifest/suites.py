@@ -1,21 +1,59 @@
 
-def common_suites(expect):
-    expect("**/openresty/nginx/sbin/nginx", "nginx rpath should contain kong lib") \
+def common_suites(expect, fips: bool = False):
+    # file existence
+    expect("/usr/local/kong/include/google/protobuf/**.proto",
+           "includes Google protobuf headers").exists()
+
+    expect("/usr/local/kong/include/kong/**/*.proto",
+           "includes Kong protobuf headers").exists()
+
+    expect("/etc/kong/kong.logrotate", "includes logrotate config").exists()
+
+    # binary correctness
+    expect("/usr/local/openresty/nginx/sbin/nginx", "nginx rpath should contain kong lib") \
         .rpath.equals("/usr/local/openresty/luajit/lib:/usr/local/kong/lib")
 
-    expect("**/openresty/nginx/sbin/nginx", "nginx binary should contain dwarf info for dynatrace") \
+    expect("/usr/local/openresty/nginx/sbin/nginx", "nginx binary should contain dwarf info for dynatrace") \
         .has_dwarf_info.equals(True) \
         .has_ngx_http_request_t_DW.equals(True)
 
-    expect("**/openresty/nginx/sbin/nginx", "nginx binary should link pcre statically") \
-        .exported_symbols.contains("pcre_free") \
-        .needed_libraries.does_not().contain_match("libpcre.so.+")
+    expect("/usr/local/openresty/nginx/sbin/nginx", "nginx binary should link pcre statically") \
+        .exported_symbols.contain("pcre_free") \
+        .needed_libraries.do_not().contain_match("libpcre.so.+")
 
-    expect("**/openresty/nginx/sbin/nginx", "nginx compiled with OpenSSL 1.1.1") \
-        .nginx_compiled_openssl.matches("OpenSSL 1.1.1.+") \
-        .needed_libraries.does_not().contain_match("libpcre.so.+") \
-        .version_requirement.key("libssl.so.1.1").is_not().greater_than("OPENSSL_1_1_1") \
-        .version_requirement.key("libcrypto.so.1.1").is_not().greater_than("OPENSSL_1_1_1") \
+    expect("/usr/local/openresty/nginx/sbin/nginx", "nginx should not be compiled with debug flag") \
+        .nginx_compile_flags.do_not().match("with\-debug")
+
+    expect("/usr/local/openresty/nginx/sbin/nginx", "nginx should include Kong's patches") \
+        .functions \
+        .contain("ngx_http_lua_kong_ffi_set_grpc_authority") \
+        .contain("ngx_http_lua_ffi_balancer_enable_keepalive") \
+        .contain("ngx_http_lua_kong_ffi_set_log_level") \
+        .contain("ngx_http_lua_kong_ffi_get_static_tag") \
+        .contain("ngx_stream_lua_kong_ffi_get_static_tag") \
+        .contain("ngx_http_lua_kong_ffi_get_full_client_certificate_chain") \
+        .contain("ngx_http_lua_kong_ffi_disable_session_reuse") \
+        .contain("ngx_http_lua_kong_ffi_set_upstream_client_cert_and_key") \
+        .contain("ngx_http_lua_kong_ffi_set_upstream_ssl_trusted_store") \
+        .contain("ngx_http_lua_kong_ffi_set_upstream_ssl_verify") \
+        .contain("ngx_http_lua_kong_ffi_set_upstream_ssl_verify_depth") \
+        .contain("ngx_stream_lua_kong_ffi_get_full_client_certificate_chain") \
+        .contain("ngx_stream_lua_kong_ffi_disable_session_reuse") \
+        .contain("ngx_stream_lua_kong_ffi_set_upstream_client_cert_and_key") \
+        .contain("ngx_stream_lua_kong_ffi_set_upstream_ssl_trusted_store") \
+        .contain("ngx_stream_lua_kong_ffi_set_upstream_ssl_verify") \
+        .contain("ngx_stream_lua_kong_ffi_set_upstream_ssl_verify_depth") \
+        .contain("ngx_http_lua_kong_ffi_var_get_by_index") \
+        .contain("ngx_http_lua_kong_ffi_var_set_by_index") \
+        .contain("ngx_http_lua_kong_ffi_var_load_indexes")
+
+    if not fips:
+        expect("/usr/local/openresty/nginx/sbin/nginx", "nginx compiled with OpenSSL 1.1.1") \
+            .nginx_compiled_openssl.matches("OpenSSL 1.1.1.+") \
+            .needed_libraries.does_not().contain_match("libpcre.so.+") \
+            .version_requirement.key("libssl.so.1.1").is_not().greater_than("OPENSSL_1_1_1") \
+            .version_requirement.key("libcrypto.so.1.1").is_not().greater_than("OPENSSL_1_1_1") \
+
 
 
 def libc_libcpp_suites(expect, max_libc: str, max_libcpp: str):
@@ -30,12 +68,13 @@ def libc_libcpp_suites(expect, max_libc: str, max_libcpp: str):
         expect("**/*.so", "libc version is less than %s" % max_libcpp) \
             .version_requirement.key("libstdc++.so.6").is_not().greater_than("GLIBCXX_%s" % max_libcpp)
 
+
 def arm64_suites(expect):
-    expect("**/lib/lua/5.1/**.so", "Lua C library uses aarch64 ld") \
+    expect("/usr/local/lib/lua/5.1/**.so", "Lua C library uses aarch64 ld") \
         .needed_libraries.contain("ld-linux-aarch64.so.1")
 
-    expect("**/kong/lib/**.so", "Lua FFI library uses aarch64 ld") \
+    expect("/usr/local/kong/lib/**.so", "Lua FFI library uses aarch64 ld") \
         .needed_libraries.contain("ld-linux-aarch64.so.1")
 
-    expect("**/openresty/nginx/sbin/nginx", "Nginx uses aarch64 ld") \
+    expect("/usr/local/openresty/nginx/sbin/nginx", "Nginx uses aarch64 ld") \
         .needed_libraries.contain("ld-linux-aarch64.so.1")

@@ -12,7 +12,7 @@ def transform(f: FileInfo):
     # until we find a way to remove the extra rpaths from it
     # It should have no side effect as the extra rpaths are long random
     # paths created by bazel.
-    
+
     if glob_match(f.path, ["**/kong/lib/libxslt.so*", "**/kong/lib/libexslt.so*"]):
         if f.rpath and "/usr/local/kong/lib" in f.rpath:
             f.rpath = "/usr/local/kong/lib"

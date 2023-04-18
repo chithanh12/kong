@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import time
 import atexit
 import difflib
 import inspect
@@ -12,6 +13,18 @@ from globmatch import glob_match
 
 import suites
 
+
+def glob_match_ignore_slash(path, globs):
+    if path.startswith("/"):
+        path = path[1:]
+    globs = list(globs)
+    for i, g in enumerate(globs):
+        if g.startswith("/"):
+            globs[i] = g[1:]
+
+    return glob_match(path, globs)
+
+
 def write_color(color):
     term_colors = {
         "red": 31,
@@ -22,6 +35,7 @@ def write_color(color):
         "cyan": 36,
         "white": 37,
     }
+
     def decorator(fn):
         def wrapper(self, *args):
             if color not in term_colors:
@@ -34,21 +48,40 @@ def write_color(color):
     return decorator
 
 
+def write_block_desc(desc_verb):
+    def decorator(fn):
+        def wrapper(self, suite: ExpectSuite, *args):
+            ExpectChain._log("[INFO] start to %s of suite %s" %
+                             (desc_verb, suite.name))
+            start_time = time.time()
+            r = fn(self, suite, *args)
+            duration = time.time() - start_time
+            ExpectChain._log("[INFO] finish to %s of suite %s in %.2fms" % (
+                desc_verb, suite.name, duration*1000))
+            return r
+        return wrapper
+    return decorator
+
+
 class ExpectSuite():
-    def __init__(self, name, manifest, libc_max_version=None, libstdcpp_max_version=None, extra_tests=[], use_rpath=False):
+    def __init__(self, name, manifest,
+                 libc_max_version=None, libstdcpp_max_version=None, use_rpath=False, fips=False, extra_tests=[]):
         self.name = name
         self.manifest = manifest
         self.libc_max_version = libc_max_version
         self.libstdcpp_max_version = libstdcpp_max_version
-        self.extra_tests = extra_tests
         self.use_rpath = use_rpath
+        self.fips = fips
+        self.extra_tests = extra_tests
+
 
 class ExpectChain():
     def __init__(self, infos):
         self._infos = infos
         self._all_failures = []
         self._reset()
-        self.verbs = ("does_not", "equal", "match", "contain", "contain_match", "less_than", "greater_than")
+        self.verbs = ("does_not", "equal", "match", "contain",
+                      "contain_match", "less_than", "greater_than")
         atexit.register(self._print_all_fails)
 
     def _reset(self):
@@ -66,11 +99,12 @@ class ExpectChain():
         fn_rel = os.path.relpath(getframeinfo(f).filename, os.getcwd())
 
         return "%s:%d" % (fn_rel, f.f_lineno)
-    
+
+    @classmethod
     def _log(self, *args):
         sys.stdout.write(" %s " % datetime.datetime.now().strftime('%b %d %X'))
         print(*args)
-    
+
     @write_color("white")
     def _print_title(self):
         if self._title_shown:
@@ -83,7 +117,7 @@ class ExpectChain():
         self._log("[FAIL] %s" % msg)
         self._all_failures.append("%s: %s" % (self._ctx_info(), msg))
         self._failures_count += 1
-    
+
     @write_color("green")
     def _print_ok(self, msg):
         self._log("[OK  ] %s" % msg)
@@ -96,25 +130,27 @@ class ExpectChain():
         if self._checks_count == 0:
             return
         if self._failures_count == 0:
-            self._print_ok("%d check(s) passed for %d file(s)" % (self._checks_count, len(self._files)))
+            self._print_ok("%d check(s) passed for %d file(s)" %
+                           (self._checks_count, len(self._files)))
         else:
             self._print_error("%d/%d check(s) failed for %d file(s)" % (
                 self._failures_count, self._checks_count, len(self._files)))
-    
+
     @write_color("red")
     def _print_all_fails(self):
         # flush pending result
         self._print_result()
 
         if self._all_failures:
-            self._print_error("Following failure(s) occured:\n" + "\n".join(self._all_failures))
+            self._print_error(
+                "Following failure(s) occured:\n" + "\n".join(self._all_failures))
             os._exit(1)
 
     def _compare(self, attr, fn):
         self._checks_count += 1
         for f in self._files:
             if not hasattr(f, attr):
-                continue # accept missing attribute for now
+                continue  # accept missing attribute for now
             v = getattr(f, attr)
             if self._key_name and isinstance(v, dict):
                 # TODO: explict flag to accept missing key
@@ -133,65 +169,70 @@ class ExpectChain():
                 return False
         return True
 
+    def _exist(self):
+        self._checks_count += 1
+        matched_files_count = len(self._files)
+        if (matched_files_count > 0) == self._logical_reverse:
+            self._print_fail("found %d files matching %s" % (
+                matched_files_count, self._path_glob))
+        return self
+
     # following are verbs
 
     def _equal(self, attr, expect):
-        return self._compare(attr, lambda a: (a == expect, "{} does {NOT} equal to %s" % expect))
+        return self._compare(attr, lambda a: (a == expect, "'{}' does {NOT} equal to '%s'" % expect))
 
     def _match(self, attr, expect):
-        return self._compare(attr, lambda a: (re.match(expect, a), "{} does {NOT} match %s" % expect))
+        return self._compare(attr, lambda a: (re.match(expect, a), "'{}' does {NOT} match '%s'" % expect))
 
     def _less_than(self, attr, expect):
         def fn(a):
             if isinstance(a, list):
-                ll = list(a)[-1]
+                ll = sorted(list(a))[-1]
             else:
                 ll = a
-            if ll >= expect:
-                return False, "{} is {NOT} less than %s" % expect
-            return True
+            return ll < expect, "'{}' is {NOT} less than %s" % expect
         return self._compare(attr, fn)
-    
+
     def _greater_than(self, attr, expect):
         def fn(a):
             if isinstance(a, list):
-                ll = list(a)[0]
+                ll = sorted(list(a))[0]
             else:
                 ll = a
-            if ll <= expect:
-                return False, "{} is {NOT} greater than %s" % expect
-            return True
+            return ll > expect, "'{}' is {NOT} greater than %s" % expect
         return self._compare(attr, fn)
 
     def _contain(self, attr, expect):
         def fn(a):
             if isinstance(a, list):
                 ok = expect in a
+                msg = "'%s' is {NOT} found in the list" % expect
                 if not ok:
-                    closest = difflib.get_close_matches(expect, a, 1)
                     if len(a) == 0:
-                        msg = "%s is empty" % attr
-                    elif len(closest) > 0:
-                        msg = "did you mean '%s'?" % closest[0]
+                        msg = "'%s' is empty" % attr
                     else:
-                        msg = "%s is {NOT} found in the list" % expect
-                    return ok, msg
+                        closest = difflib.get_close_matches(expect, a, 1)
+                        if len(closest) > 0:
+                            msg += ", did you mean '%s'?" % closest[0]
+                return ok, msg
             else:
                 return False, "%s is not a list" % attr
-            return True, None
+            # should not reach here
         return self._compare(attr, fn)
 
     def _contain_match(self, attr, expect):
         def fn(a):
             if isinstance(a, list):
+                msg = "'%s' is {NOT} found in the list" % expect
                 for e in a:
                     if re.match(expect, e):
-                        return True, None
-                return False, "%s is {NOT} found in the list" % expect
+                        return True, msg
+                return False, msg
             else:
-                return False, "%s is not a list" % attr
+                return False, "'%s' is not a list" % attr
         return self._compare(attr, fn)
-    
+
     # following are public methods (test functions)
     def to(self):
         # does nothing, but helps to construct English
@@ -204,10 +245,11 @@ class ExpectChain():
         self._reset()
 
         self._msg = msg
-        self._path_glob = path_glob
+        self._print_title()
 
+        self._path_glob = path_glob
         for f in self._infos:
-            if glob_match(f.relpath, [path_glob]):
+            if glob_match_ignore_slash(f.relpath, [path_glob]):
                 self._files.append(f)
         return self
 
@@ -220,32 +262,23 @@ class ExpectChain():
 
     def is_not(self):
         return self.do_not()
-    
+
     # access the value of the dict of key "key"
     def key(self, key):
         self._key_name = key
         return self
 
     def exist(self):
-        matched_files_count = len(self._files)
-        if (matched_files_count > 0) == self._logical_reverse:
-            self._print_fail("found %d files matching %s" % (
-                matched_files_count, self._path_glob))
-        return self
+        return self._exist()
 
     def exists(self):
-        return self.exist()
-    
+        return self._exist()
+
     def __getattr__(self, name):
-        self._print_title()
         dummy_call = lambda *x: self
 
         verb = re.findall("^(.*?)(?:s|es)?$", name)[0]
         if verb not in self.verbs:
-            if self._last_attribute != None:
-                self._print_error("last attribute \"%s\" is not followed by a verb, got \"%s\"" % (self._last_attribute, verb))
-                return dummy_call
-
             # XXX: hack to support rpath/runpath
             if self._current_suite.use_rpath and name == "runpath":
                 name = "rpath"
@@ -257,16 +290,16 @@ class ExpectChain():
             self._logical_reverse = False
             self._key_name = None
             return self
-        
+
         if not self._last_attribute:
             self._print_error("attribute is not set before verb \"%s\"" % name)
             return dummy_call
-        
+
         attr = self._last_attribute
-        self._last_attribute = None
         for f in self._files:
             if not hasattr(f, attr):
-                self._print_error("\"%s\" expect \"%s\" attribute to be present, but it's not for %s" % (name, attr, f.path))
+                self._print_error(
+                    "\"%s\" expect \"%s\" attribute to be present, but it's not for %s" % (name, attr, f.path))
                 return dummy_call
 
         def cls(expect):
@@ -274,16 +307,16 @@ class ExpectChain():
             return self
 
         return cls
-    
-    def run(self, suite: ExpectSuite, manifest: str):
-        self._log("[TEST] start test suite %s" % suite.name)
+
+    @write_block_desc("compare manifest")
+    def compare_manifest(self, suite: ExpectSuite, manifest: str):
         self._current_suite = suite
 
         if not suite.manifest:
             self._print_error("manifest is not set for suite %s" % suite.name)
         else:
-            self._log("[TEST] start manifest compare for suite %s" % suite.name)
-            diff_result = subprocess.run(['diff', "-BbNaur", suite.manifest, '-'], input=manifest, stdout=subprocess.PIPE)
+            diff_result = subprocess.run(
+                ['diff', "-BbNaur", suite.manifest, '-'], input=manifest, stdout=subprocess.PIPE)
             if diff_result.returncode != 0:
                 self._print_fail("manifest is not up-to-date:")
                 if diff_result.stdout:
@@ -291,11 +324,16 @@ class ExpectChain():
                 if diff_result.stderr:
                     print(diff_result.stderr.decode())
 
+    @write_block_desc("run test suite")
+    def run(self, suite: ExpectSuite):
+        self._current_suite = suite
+
         suites.common_suites(self.expect)
-        suites.libc_libcpp_suites(self.expect, suite.libc_max_version, suite.libstdcpp_max_version)
+        suites.libc_libcpp_suites(
+            self.expect, suite.libc_max_version, suite.libstdcpp_max_version)
 
         if suite.extra_tests:
             for s in suites.extra_tests:
                 s(self.expect)
 
-        self._log("[TEST] finished test suite %s" % suite.name)
+        self._print_result()  # cleanup the lazy buffer

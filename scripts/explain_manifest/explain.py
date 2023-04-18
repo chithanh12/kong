@@ -7,6 +7,22 @@ import lief
 from looseversion import LooseVersion
 from elftools.elf.elffile import ELFFile
 
+caches = {}
+
+
+def lazy_evaluate_cache():
+    def decorator(fn):
+        def wrapper(self, name):
+            key = (self, name)
+            if key in caches:
+                return caches[key]
+            r = fn(self, name)
+            caches[key] = r
+            return r
+        return wrapper
+    return decorator
+
+
 class ExplainOpts():
     # General
     owners = True
@@ -29,6 +45,7 @@ class ExplainOpts():
         this.version_requirement = args.version_requirement
 
         return this
+
 
 class FileInfo():
     def __init__(self, path, relpath):
@@ -75,6 +92,8 @@ class ElfFileInfo(FileInfo):
         self.get_imported_symbols = None
         self.version_requirement = {}
 
+        self._lazy_evaluate_cache = {}
+
         if not os.path.isfile(path):
             return
 
@@ -99,17 +118,30 @@ class ElfFileInfo(FileInfo):
             [d.name for d in binary.exported_symbols])
         self.get_imported_symbols = lambda: sorted(
             [d.name for d in binary.imported_symbols])
+        self.get_functions = lambda: sorted(
+            [d.name for d in binary.functions])
 
         for f in binary.symbols_version_requirement:
-            self.version_requirement[f.name] = [a.name for a in f.get_auxiliary_symbols()]
-            self.version_requirement[f.name].sort(key=LooseVersion)
-    
+            self.version_requirement[f.name] = [LooseVersion(
+                a.name) for a in f.get_auxiliary_symbols()]
+            self.version_requirement[f.name].sort()
+
     def __getattr__(self, name):
+        if name in self._lazy_evaluate_cache:
+            return self._lazy_evaluate_cache[name]
+
+        ret = None
         if name == "exported_symbols" and self.get_exported_symbols:
-            return self.get_exported_symbols()
+            ret = self.get_exported_symbols()
         elif name == "imported_symbols" and self.get_imported_symbols:
-            return self.get_imported_symbols()
-    
+            ret = self.get_imported_symbols()
+        elif name == "functions" and self.get_functions:
+            ret = self.get_functions()
+
+        if ret:
+            self._lazy_evaluate_cache[name] = ret
+            return ret
+
         return self.__getattribute__(name)
 
     def explain(self, opts):
@@ -130,7 +162,8 @@ class ElfFileInfo(FileInfo):
         if opts.version_requirement and self.version_requirement:
             req = []
             for k in sorted(self.version_requirement):
-                req.append("%s: %s" % (k, ", ".join(self.version_requirement[k])))
+                req.append("%s: %s" %
+                           (k, ", ".join(self.version_requirement[k])))
             lines.append(("Version Requirement", req))
 
         return pline + lines
@@ -146,11 +179,13 @@ class NginxInfo(ElfFileInfo):
 
         self.nginx_modules = []
         self.nginx_compiled_openssl = None
+        self.nginx_compile_flags = None
 
         binary = lief.parse(path)
 
         for s in binary.strings:
             if re.match("\s*--prefix=/", s):
+                self.nginx_compile_flags = s
                 for m in re.findall("add(?:-dynamic)?-module=(.*?) ", s):
                     if m.startswith("../"):  # skip bundled modules
                         continue
@@ -164,6 +199,19 @@ class NginxInfo(ElfFileInfo):
             elif m := re.match("^built with (.+) \(running with", s):
                 self.nginx_compiled_openssl = m.group(1).strip()
 
+        # Get the DWARF debug info section
+        # dwarf = binary.get_section(".debug_info")
+        # # Create a DWARF parser
+        # dwarf_parser = lief.DWARF.Parser(dwarf.content, binary)
+        # # Get the compilation unit
+        # comp_unit = dwarf_parser.parse_comp_unit()
+        # # Iterate over DIEs (Debugging Information Entries)
+        # for die in comp_unit.iter_DIEs():
+        #     # Check the tag
+        #     if die.tag == lief.DWARF.DW_TAG.subprogram:
+        #         # Found a subprogram (function) DIE
+        #         print(f"Found subprogram: {die.attributes['DW_AT_name'].value}")
+
         # Fetch DWARF infos
         with open(path, "rb") as f:
             elffile = ELFFile(f)
@@ -175,7 +223,8 @@ class NginxInfo(ElfFileInfo):
                 # Too many DIEs in the binary, we just check those in `ngx_http_request`
                 if "ngx_http_request" in dies[0].attributes['DW_AT_name'].value.decode('utf-8'):
                     for die in dies:
-                        value = die.attributes.get('DW_AT_name') and die.attributes.get('DW_AT_name').value.decode('utf-8')
+                        value = die.attributes.get('DW_AT_name') and die.attributes.get(
+                            'DW_AT_name').value.decode('utf-8')
                         if value and value == "ngx_http_request_t":
                             self.has_ngx_http_request_t_DW = True
                             return
@@ -187,6 +236,7 @@ class NginxInfo(ElfFileInfo):
         lines.append(("Modules", self.nginx_modules))
         lines.append(("OpenSSL", self.nginx_compiled_openssl))
         lines.append(("DWARF", self.has_dwarf_info))
-        lines.append(("DWARF - ngx_http_request_t related DWARF DIEs", self.has_ngx_http_request_t_DW))
+        lines.append(("DWARF - ngx_http_request_t related DWARF DIEs",
+                     self.has_ngx_http_request_t_DW))
 
         return pline + lines

@@ -69,7 +69,7 @@ def libc_libcpp_suites(expect, max_libc: str, max_libcpp: str):
 
 
 def arm64_suites(expect):
-    expect("**/*/**.so*", "Dynamic libraris are arm64 arch") \
+    expect("**/*/**.so*", "Dynamic libraries are arm64 arch") \
         .arch.equals("AARCH64")
 
     expect("/usr/local/openresty/nginx/sbin/nginx", "Nginx is arm64 arch") \

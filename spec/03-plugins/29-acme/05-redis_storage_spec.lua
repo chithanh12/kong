@@ -311,6 +311,7 @@ describe("Plugin: acme (storage.redis)", function()
         }))
 
         prepare_redis_data()
+        ngx.sleep(3)
 
       end)
 

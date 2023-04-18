@@ -29,9 +29,9 @@ targets = {
         manifest="fixtures/alpine-amd64.txt",
         use_rpath=True,
     ),
-    "amazonlinux2-amd64": ExpectSuite(
+    "amazonlinux-2-amd64": ExpectSuite(
         name="Amazon Linux 2 (amd64)",
-        manifest="fixtures/amazonlinux2-amd64.txt",
+        manifest="fixtures/amazonlinux-2-amd64.txt",
         use_rpath=True,
         libc_max_version="2.26",
     ),

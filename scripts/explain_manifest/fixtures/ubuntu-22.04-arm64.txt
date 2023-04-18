@@ -132,7 +132,7 @@
   - libc.so.6
   - ld-linux-aarch64.so.1
   Runpath   : /usr/local/openresty/luajit/lib:/usr/local/kong/lib
-  Nginx Modules:
+  Modules   :
   - lua-kong-nginx-module
   - lua-kong-nginx-module/stream
   - lua-resty-events

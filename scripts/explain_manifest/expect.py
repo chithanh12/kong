@@ -333,7 +333,7 @@ class ExpectChain():
             self.expect, suite.libc_max_version, suite.libstdcpp_max_version)
 
         if suite.extra_tests:
-            for s in suites.extra_tests:
+            for s in suite.extra_tests:
                 s(self.expect)
 
         self._print_result()  # cleanup the lazy buffer

@@ -29,6 +29,7 @@ class ExplainOpts():
     mode = True
     size = False
     # ELF
+    arch = False
     merge_rpaths_runpaths = False
     imported_symbols = False
     exported_symbols = False
@@ -39,6 +40,7 @@ class ExplainOpts():
         this.owners = args.owners
         this.mode = args.mode
         this.size = args.size
+        this.arch = args.arch
         this.merge_rpaths_runpaths = args.merge_rpaths_runpaths
         this.imported_symbols = args.imported_symbols
         this.exported_symbols = args.exported_symbols
@@ -63,7 +65,7 @@ class FileInfo():
             self.gid = os.stat(path).st_gid
             self.size = os.stat(path).st_size
 
-    def explain(self, opts):
+    def explain(self, opts: ExplainOpts):
         lines = [("Path", self.relpath)]
         if hasattr(self, "link"):
             lines.append(("Link", self.link))
@@ -85,6 +87,7 @@ class ElfFileInfo(FileInfo):
     def __init__(self, path, relpath):
         super().__init__(path, relpath)
 
+        self.arch = None
         self.needed_libraries = []
         self.rpath = None
         self.runpath = None
@@ -104,6 +107,8 @@ class ElfFileInfo(FileInfo):
         binary = lief.parse(path)
         if not binary:  # not an ELF file, malformed, etc
             return
+    
+        self.arch = binary.header.machine_type.name
 
         for d in binary.dynamic_entries:
             if d.tag == lief.ELF.DYNAMIC_TAGS.NEEDED:
@@ -144,11 +149,13 @@ class ElfFileInfo(FileInfo):
 
         return self.__getattribute__(name)
 
-    def explain(self, opts):
+    def explain(self, opts: ExplainOpts):
         pline = super().explain(opts)
 
         lines = []
 
+        if opts.arch and self.arch:
+            lines.append(("Arch", self.arch))
         if self.needed_libraries:
             lines.append(("Needed", self.needed_libraries))
         if self.rpath:
@@ -199,19 +206,6 @@ class NginxInfo(ElfFileInfo):
             elif m := re.match("^built with (.+) \(running with", s):
                 self.nginx_compiled_openssl = m.group(1).strip()
 
-        # Get the DWARF debug info section
-        # dwarf = binary.get_section(".debug_info")
-        # # Create a DWARF parser
-        # dwarf_parser = lief.DWARF.Parser(dwarf.content, binary)
-        # # Get the compilation unit
-        # comp_unit = dwarf_parser.parse_comp_unit()
-        # # Iterate over DIEs (Debugging Information Entries)
-        # for die in comp_unit.iter_DIEs():
-        #     # Check the tag
-        #     if die.tag == lief.DWARF.DW_TAG.subprogram:
-        #         # Found a subprogram (function) DIE
-        #         print(f"Found subprogram: {die.attributes['DW_AT_name'].value}")
-
         # Fetch DWARF infos
         with open(path, "rb") as f:
             elffile = ELFFile(f)
@@ -229,7 +223,7 @@ class NginxInfo(ElfFileInfo):
                             self.has_ngx_http_request_t_DW = True
                             return
 
-    def explain(self, opts):
+    def explain(self, opts: ExplainOpts):
         pline = super().explain(opts)
 
         lines = []

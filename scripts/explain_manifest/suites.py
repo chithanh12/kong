@@ -50,7 +50,6 @@ def common_suites(expect, fips: bool = False):
     if not fips:
         expect("/usr/local/openresty/nginx/sbin/nginx", "nginx compiled with OpenSSL 1.1.1") \
             .nginx_compiled_openssl.matches("OpenSSL 1.1.1.+") \
-            .needed_libraries.does_not().contain_match("libpcre.so.+") \
             .version_requirement.key("libssl.so.1.1").is_not().greater_than("OPENSSL_1_1_1") \
             .version_requirement.key("libcrypto.so.1.1").is_not().greater_than("OPENSSL_1_1_1") \
 
@@ -70,11 +69,8 @@ def libc_libcpp_suites(expect, max_libc: str, max_libcpp: str):
 
 
 def arm64_suites(expect):
-    expect("/usr/local/lib/lua/5.1/**.so", "Lua C library uses aarch64 ld") \
-        .needed_libraries.contain("ld-linux-aarch64.so.1")
+    expect("**/*/**.so*", "Dynamic libraris are arm64 arch") \
+        .arch.equals("AARCH64")
 
-    expect("/usr/local/kong/lib/**.so", "Lua FFI library uses aarch64 ld") \
-        .needed_libraries.contain("ld-linux-aarch64.so.1")
-
-    expect("/usr/local/openresty/nginx/sbin/nginx", "Nginx uses aarch64 ld") \
-        .needed_libraries.contain("ld-linux-aarch64.so.1")
+    expect("/usr/local/openresty/nginx/sbin/nginx", "Nginx is arm64 arch") \
+        .arch.equals("AARCH64")

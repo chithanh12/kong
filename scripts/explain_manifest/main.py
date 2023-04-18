@@ -29,19 +29,21 @@ def parse_args():
         "--file_list", "-f", help="Path to the files list to explain for manifest; " +
         "each line in the file should be a glob pattern of full path")
     parser.add_argument(
-        "--owners", help="Export and compare owner and group", action="store_true")
+        "--owners", help="Display owner and group", action="store_true")
     parser.add_argument(
-        "--mode", help="Export and compare mode", action="store_true")
+        "--mode", help="Display mode", action="store_true")
     parser.add_argument(
-        "--size", help="Export and compare size", action="store_true")
+        "--size", help="Display size", action="store_true")
+    parser.add_argument("--arch",
+                        help="Display ELF architecture", action="store_true")
     parser.add_argument("--merge_rpaths_runpaths",
                         help="Treate RPATH and RUNPATH as same", action="store_true")
     parser.add_argument(
-        "--imported_symbols", help="Export and compare imported symbols", action="store_true")
+        "--imported_symbols", help="Display imported symbols", action="store_true")
     parser.add_argument(
-        "--exported_symbols", help="Export and compare exported symbols", action="store_true")
+        "--exported_symbols", help="Display exported symbols", action="store_true")
     parser.add_argument("--version_requirement",
-                        help="Export and compare exported symbols",
+                        help="Display exported symbols",
                         action="store_true")
 
     return parser.parse_args()
@@ -171,6 +173,7 @@ if __name__ == "__main__":
     if args.output:
         if args.output == "-":
             f = sys.stdout
+            manifest = manifest.decode('utf-8')
         else:
             f = open(args.output, "wb")
         f.write(manifest)
